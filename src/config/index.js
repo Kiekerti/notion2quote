@@ -50,7 +50,7 @@ function getConfig() {
       apiEndpoint: `https://dot.mindreset.tech/api/authV2/open/device/${process.env.QUOTE_DEVICE_ID}/text`
     },
     app: {
-      timeout: 10000, // 10秒超时
+      timeout: 30000, // 30秒超时
       maxMessageLength: 500 // 最大消息长度
     }
   };
