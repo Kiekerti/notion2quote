@@ -92,7 +92,7 @@ module.exports = catchAsync(async (req, res) => {
     info('Notion 事件数据:', notionEvent);
     
     // 5. 检查是否是数据库更新事件
-    if (notionEvent.object === 'event' && (notionEvent.type === 'database_item' || notionEvent.type === 'page.created' || notionEvent.type === 'page.updated')) {
+    if (notionEvent.object === 'event' || notionEvent.type === 'database_item' || notionEvent.type === 'page.created' || notionEvent.type === 'page.updated' || notionEvent.type === 'page.properties_updated') {
       info('检测到数据库项目更新事件');
       
       // 6. 执行同步操作
