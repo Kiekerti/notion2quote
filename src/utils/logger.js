@@ -108,10 +108,22 @@ function error(message, meta = {}) {
  * @param {Object} req 请求对象
  */
 function logRequest(req) {
+  // 过滤敏感的请求头信息
+  const safeHeaders = {};
+  const sensitiveHeaders = ['authorization', 'x-notion-signature', 'x-vercel-oidc-token'];
+  
+  if (req.headers) {
+    Object.keys(req.headers).forEach(header => {
+      if (!sensitiveHeaders.includes(header.toLowerCase())) {
+        safeHeaders[header] = req.headers[header];
+      }
+    });
+  }
+  
   info('API 请求', {
     method: req.method,
     url: req.url,
-    headers: req.headers,
+    headers: safeHeaders,
     body: req.body
   });
 }
