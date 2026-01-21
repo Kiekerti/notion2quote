@@ -1,5 +1,6 @@
 const { Client } = require('@notionhq/client');
 const { getConfig } = require('../config');
+const { info, error } = require('../utils/logger');
 
 /**
  * Notion 服务模块
@@ -30,7 +31,7 @@ async function getNotionTasks() {
       database_id: databaseId
     });
     
-    console.log('Notion 数据库属性:', Object.keys(database.properties));
+    info('获取 Notion 数据库结构成功');
     
     // 使用正确的状态属性名：办理状态
     const statusProperty = '办理状态';
@@ -38,18 +39,15 @@ async function getNotionTasks() {
     // 使用正确的标题属性名：待办事项
     const titleProperty = '待办事项';
     
-    console.log(`使用状态属性: ${statusProperty}`);
-    console.log(`使用标题属性: ${titleProperty}`);
-    
     // 检查状态属性是否存在
     if (!database.properties[statusProperty]) {
-      console.error(`数据库中不存在状态属性: ${statusProperty}`);
+      error(`数据库中不存在状态属性: ${statusProperty}`);
       return [];
     }
     
     // 检查状态属性类型
     const statusPropertyType = database.properties[statusProperty].type;
-    console.log(`状态属性类型: ${statusPropertyType}`);
+    info(`状态属性类型: ${statusPropertyType}`);
     
     // 根据属性类型构建不同的过滤器
     let filter = {};
@@ -75,7 +73,7 @@ async function getNotionTasks() {
         }
       };
     } else {
-      console.error(`不支持的状态属性类型: ${statusPropertyType}`);
+      error(`不支持的状态属性类型: ${statusPropertyType}`);
       return [];
     }
     
@@ -86,11 +84,11 @@ async function getNotionTasks() {
 
     // 验证响应格式
     if (!response || !Array.isArray(response.results)) {
-      console.error('Notion API 响应格式错误');
+      error('Notion API 响应格式错误');
       return [];
     }
 
-    return response.results.map(page => {
+    const tasks = response.results.map(page => {
       // 检查属性类型并获取标题
       let title = '';
       if (page.properties[titleProperty].title) {
@@ -109,10 +107,13 @@ async function getNotionTasks() {
       
       return title;
     }).filter(title => title.trim() !== ''); // 过滤空标题
-  } catch (error) {
-    console.error('Error fetching tasks from Notion:', error.message);
-    if (error.response) {
-      console.error('Notion API 错误响应:', error.response.status, error.response.data);
+    
+    info(`获取到 ${tasks.length} 个进行中项目`);
+    return tasks;
+  } catch (err) {
+    error('从 Notion 获取任务时出错', { error: err.message });
+    if (err.response) {
+      error('Notion API 错误响应', { status: err.response.status });
     }
     return [];
   }

@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { getConfig } = require('../config');
+const { info, error } = require('../utils/logger');
 
 /**
  * Quote 服务模块
@@ -53,9 +54,7 @@ async function sendToQuoteDevice(tasks) {
   const requestData = buildRequestData(tasks);
   
   try {
-    console.log(`使用 API 端点: ${config.quote.apiEndpoint}`);
-    console.log(`设备 ID: ${config.quote.deviceId}`);
-    console.log('请求数据:', requestData);
+    info('发送任务到 Quote 设备', { taskCount: tasks.length });
     
     const response = await axios.post(
       config.quote.apiEndpoint,
@@ -71,26 +70,20 @@ async function sendToQuoteDevice(tasks) {
     
     // 验证响应
     if (response && (response.status === 200 || response.data.code === 200)) {
-      console.log('发送成功！');
-      console.log('响应状态:', response.status);
-      console.log('响应数据:', response.data);
+      info('发送成功！', { status: response.status });
       return true;
     } else {
-      console.log('发送失败:', response?.status, response?.data);
+      error('发送失败', { status: response?.status, data: response?.data });
       return false;
     }
-  } catch (error) {
-    console.error('Error sending to Quote device:', error.message);
-    if (error.response) {
+  } catch (err) {
+    error('发送到 Quote 设备时出错', { error: err.message });
+    if (err.response) {
       // 服务器返回错误状态码
-      console.error('响应状态:', error.response.status);
-      console.error('响应数据:', error.response.data);
-    } else if (error.request) {
+      error('响应状态错误', { status: err.response.status, data: err.response.data });
+    } else if (err.request) {
       // 请求已发送但没有收到响应
-      console.error('没有收到响应:', error.request);
-    } else {
-      // 请求配置出错
-      console.error('请求配置错误:', error.message);
+      error('没有收到响应');
     }
     return false;
   }
