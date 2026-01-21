@@ -1,0 +1,23 @@
+{
+  "name": "notion2quote",
+  "version": "1.0.0",
+  "description": "从 Notion 数据库导出进行中项目并通过文字 API 发送到 Quote 设备",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "notion",
+    "quote",
+    "todo",
+    "vercel"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@notionhq/client": "^2.2.15",
+    "axios": "^1.6.7",
+    "dotenv": "^16.4.1"
+  }
+}

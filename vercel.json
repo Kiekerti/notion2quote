@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "src/api/sync.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "src/api/webhook.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/sync",
+      "dest": "/src/api/sync.js"
+    },
+    {
+      "src": "/api/webhook",
+      "dest": "/src/api/webhook.js"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}
