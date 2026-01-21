@@ -20,13 +20,16 @@ function verifyNotionSignature(signature, payload) {
     return false;
   }
   
+  // 提取签名值（去掉 sha256= 前缀）
+  const signatureValue = signature.startsWith('sha256=') ? signature.substring('sha256='.length) : signature;
+  
   // 计算 HMAC-SHA256 签名
   const hmac = crypto.createHmac('sha256', webhookSecret);
   hmac.update(payload, 'utf8');
   const digest = hmac.digest('hex');
   
   // 比较签名
-  return signature === digest;
+  return signatureValue === digest;
 }
 
 /**
