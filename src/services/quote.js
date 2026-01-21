@@ -39,7 +39,7 @@ function buildRequestData(tasks) {
     message: tasksText,
     signature: `总共有 ${taskCount} 个待办事项`,
     icon: '',
-    link: '',
+    link: 'https://www.notion.so/kieker/2a8935d95ce580109f12e9ce4edf114a?v=2aa935d95ce580d99ee9000c1cee44c5',
     taskKey: ''
   };
 }
