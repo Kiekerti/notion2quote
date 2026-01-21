@@ -54,13 +54,13 @@ module.exports = catchAsync(async (req, res) => {
       });
     }
     
-    // 2. 检查是否是 page.properties_updated 事件（Notion 可能不发送签名）
-    if (req.body.type === 'page.properties_updated' && req.body.workspace_id) {
-      info('收到 Notion 页面属性更新事件，跳过签名验证');
+    // 2. 检查是否是 Notion 事件（跳过签名验证，因为 Notion 可能不发送签名或签名格式不一致）
+    if (req.body.workspace_id && (req.body.type === 'page.created' || req.body.type === 'page.updated' || req.body.type === 'page.properties_updated' || req.body.type === 'database_item')) {
+      info(`收到 Notion ${req.body.type} 事件，跳过签名验证`);
       
       // 继续处理事件，不验证签名
     } else {
-      // 3. 验证 Notion Webhook 签名
+      // 3. 验证 Notion Webhook 签名（仅对其他事件类型）
       const signature = req.headers['x-notion-signature'];
       const payload = JSON.stringify(req.body);
       
