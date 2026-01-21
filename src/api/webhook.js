@@ -42,7 +42,19 @@ module.exports = catchAsync(async (req, res) => {
   info('收到 Notion Webhook 事件...');
   
   try {
-    // 1. 验证 Notion Webhook 签名
+    // 1. 检查是否是 Notion 验证请求
+    if (req.body.type === 'block.created' && req.body.data?.block?.type === 'paragraph' && req.body.data?.block?.paragraph?.rich_text?.[0]?.text?.content) {
+      const verificationToken = req.body.data.block.paragraph.rich_text[0].text.content;
+      info(`收到 Notion 验证请求，验证令牌: ${verificationToken}`);
+      logResponse(res, 200, { success: true, message: '验证请求处理成功', token: verificationToken });
+      return res.status(200).json({ 
+        success: true, 
+        message: '验证请求处理成功',
+        token: verificationToken
+      });
+    }
+    
+    // 2. 验证 Notion Webhook 签名
     const signature = req.headers['x-notion-signature'];
     const payload = JSON.stringify(req.body);
     
@@ -56,7 +68,7 @@ module.exports = catchAsync(async (req, res) => {
       });
     }
     
-    // 2. 检查环境变量
+    // 3. 检查环境变量
     const envCheck = checkEnvVariables();
     if (!envCheck.success) {
       const errorMessage = '环境变量配置不完整';
@@ -68,22 +80,22 @@ module.exports = catchAsync(async (req, res) => {
       });
     }
     
-    // 3. 解析 Notion Webhook 数据
+    // 4. 解析 Notion Webhook 数据
     const notionEvent = req.body;
     info('Notion 事件数据:', notionEvent);
     
-    // 4. 检查是否是数据库更新事件
-    if (notionEvent.object === 'event' && notionEvent.type === 'database_item') {
+    // 5. 检查是否是数据库更新事件
+    if (notionEvent.object === 'event' && (notionEvent.type === 'database_item' || notionEvent.type === 'page.created' || notionEvent.type === 'page.updated')) {
       info('检测到数据库项目更新事件');
       
-      // 5. 执行同步操作
+      // 6. 执行同步操作
       info('正在执行同步操作...');
       
-      // 5.1 获取 Notion 进行中项目
+      // 6.1 获取 Notion 进行中项目
       const tasks = await getNotionTasks();
       info(`获取到 ${tasks.length} 个进行中项目`, { tasks });
       
-      // 5.2 发送到 Quote 设备
+      // 6.2 发送到 Quote 设备
       const success = await sendToQuoteDevice(tasks);
       
       if (success) {
