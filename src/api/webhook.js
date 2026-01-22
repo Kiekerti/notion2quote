@@ -1,6 +1,6 @@
 const { checkEnvVariables } = require('../config');
 const { getNotionTasks } = require('../services/notion');
-const { sendToQuoteDevice } = require('../services/quote');
+const { sendTasksInBatches } = require('../services/quote');
 const { info, error, logRequest, logResponse } = require('../utils/logger');
 const { catchAsync } = require('../utils/errorHandler');
 const crypto = require('crypto');
@@ -185,10 +185,10 @@ module.exports = catchAsync(async (req, res) => {
         
         // 9.1 获取 Notion 进行中项目
         const tasks = await getNotionTasks();
-        info(`获取到 ${tasks.length} 个进行中项目`, { tasks });
+        info(`获取到 ${tasks.length} 个进行中项目`);
         
-        // 9.2 发送到 Quote 设备
-        const success = await sendToQuoteDevice(tasks);
+        // 9.2 分批发送到 Quote 设备
+        const success = await sendTasksInBatches(tasks);
         
         // 10. 添加事件到已处理集合
         if (notionEvent.id) {

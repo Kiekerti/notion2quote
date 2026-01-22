@@ -1,6 +1,6 @@
 const { checkEnvVariables } = require('../config');
 const { getNotionTasks } = require('../services/notion');
-const { sendToQuoteDevice } = require('../services/quote');
+const { sendTasksInBatches } = require('../services/quote');
 const { info, error, logRequest, logResponse } = require('../utils/logger');
 const { catchAsync } = require('../utils/errorHandler');
 
@@ -28,11 +28,11 @@ module.exports = catchAsync(async (req, res) => {
   // 1. 获取 Notion 进行中项目
   info('正在从 Notion 获取进行中项目...');
   const tasks = await getNotionTasks();
-  info(`获取到 ${tasks.length} 个进行中项目`, { tasks });
+  info(`获取到 ${tasks.length} 个进行中项目`);
   
-  // 2. 发送到 Quote 设备
-  info('正在发送到 Quote 设备...');
-  const success = await sendToQuoteDevice(tasks);
+  // 2. 分批发送到 Quote 设备
+  info('正在分批发送到 Quote 设备...');
+  const success = await sendTasksInBatches(tasks);
   
   if (success) {
       const successMessage = '成功发送到 Quote 设备！';
