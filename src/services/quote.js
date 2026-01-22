@@ -56,12 +56,18 @@ function buildRequestData(tasks, batchNumber = 1, totalBatches = 1, totalTasks =
   const taskCount = tasks.length;
   const tasksText = formatTasksMessage(tasks, batchNumber, totalBatches, startIndex);
   
-  // 转换为北京时间（UTC+8）并格式化为 "9:15:22" 格式
-  const beijingTime = new Date(fetchTime.getTime() + 8 * 60 * 60 * 1000);
-  const hours = beijingTime.getHours();
-  const minutes = beijingTime.getMinutes().toString().padStart(2, '0');
-  const seconds = beijingTime.getSeconds().toString().padStart(2, '0');
-  const formattedTime = `${hours}:${minutes}:${seconds}`;
+  // 转换为北京时间（UTC+8）并格式化为 "21:15:27" 格式
+  // 正确的北京时间计算：基于UTC时间加上8小时
+  const utcTime = new Date(fetchTime);
+  const beijingHours = (utcTime.getUTCHours() + 8) % 24;
+  const beijingMinutes = utcTime.getUTCMinutes();
+  const beijingSeconds = utcTime.getUTCSeconds();
+  
+  // 格式化时间字符串
+  const formattedHours = beijingHours.toString().padStart(2, '0');
+  const formattedMinutes = beijingMinutes.toString().padStart(2, '0');
+  const formattedSeconds = beijingSeconds.toString().padStart(2, '0');
+  const formattedTime = `${formattedHours}:${formattedMinutes}:${formattedSeconds}`;
   
   return {
     refreshNow: true,
@@ -81,7 +87,27 @@ function buildRequestData(tasks, batchNumber = 1, totalBatches = 1, totalTasks =
  */
 async function sendToQuoteDevice(tasks) {
   const config = getConfig();
-  const requestData = buildRequestData(tasks);
+  // 计算总任务数和批次数
+  const totalTasks = tasks.length;
+  const batchSize = 3; // 每批3个任务
+  const totalBatches = Math.ceil(totalTasks / batchSize);
+  
+  // 计算当前批次
+  const now = new Date();
+  const minutesSinceMidnight = now.getHours() * 60 + now.getMinutes();
+  const batchInterval = 3; // 每3分钟切换一次批次
+  // 确保当前批次在有效范围内：1 到 totalBatches
+  const currentBatch = Math.floor((minutesSinceMidnight / batchInterval) % totalBatches) + 1;
+  
+  info(`当前时间计算的批次: ${currentBatch}/${totalBatches}`);
+  
+  // 计算当前批次的任务范围
+  const startIndex = (currentBatch - 1) * batchSize;
+  const endIndex = Math.min(startIndex + batchSize, totalTasks);
+  const batchTasks = tasks.slice(startIndex, endIndex);
+  
+  // 使用正确的参数构建请求数据，确保传递startIndex
+  const requestData = buildRequestData(batchTasks, currentBatch, totalBatches, totalTasks, new Date(), startIndex);
   
   try {
     info('发送任务到 Quote 设备', { taskCount: tasks.length });
@@ -208,23 +234,23 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2, for
     const now = new Date();
     const minutesSinceMidnight = now.getHours() * 60 + now.getMinutes();
     const batchInterval = 3; // 每3分钟切换一次批次
-    const currentBatch = ((minutesSinceMidnight / batchInterval) % totalBatches) + 1;
+    const currentBatch = Math.floor((minutesSinceMidnight / batchInterval) % totalBatches) + 1;
     
-    info(`当前时间计算的批次: ${Math.round(currentBatch)}/${totalBatches}`);
+    info(`当前时间计算的批次: ${currentBatch}/${totalBatches}`);
     
     // 计算当前批次的任务范围
-    const startIndex = (Math.round(currentBatch) - 1) * batchSize;
+    const startIndex = (currentBatch - 1) * batchSize;
     const endIndex = Math.min(startIndex + batchSize, totalTasks);
     const batchTasks = tasks.slice(startIndex, endIndex);
     
-    info(`当前批次任务: ${batchTasks.length} 个 (${Math.round(currentBatch)}/${totalBatches})`, { tasks: batchTasks });
+    info(`当前批次任务: ${batchTasks.length} 个 (${currentBatch}/${totalBatches})`, { tasks: batchTasks });
     
     // 发送当前批次的任务
-    const requestData = buildRequestData(batchTasks, Math.round(currentBatch), totalBatches, totalTasks, fetchTime, startIndex);
+    const requestData = buildRequestData(batchTasks, currentBatch, totalBatches, totalTasks, fetchTime, startIndex);
     
     try {
       info('发送批次任务到 Quote 设备', { 
-        batch: Math.round(currentBatch), 
+        batch: currentBatch, 
         totalBatches, 
         taskCount: batchTasks.length 
       });
@@ -244,13 +270,13 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2, for
       // 验证响应
       if (response && (response.status === 200 || response.data.code === 200)) {
         info('批次发送成功！', { 
-          batch: Math.round(currentBatch), 
+          batch: currentBatch, 
           status: response.status 
         });
         return true;
       } else {
         error('批次发送失败', { 
-          batch: Math.round(currentBatch),
+          batch: currentBatch,
           status: response?.status, 
           data: response?.data 
         });
@@ -258,7 +284,7 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2, for
       }
     } catch (err) {
       error('发送批次任务到 Quote 设备时出错', { 
-        batch: Math.round(currentBatch),
+        batch: currentBatch,
         error: err.message 
       });
       if (err.response) {

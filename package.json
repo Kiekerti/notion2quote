@@ -5,7 +5,9 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint src/",
+    "format": "prettier --write src/"
   },
   "keywords": [
     "notion",
@@ -19,5 +21,9 @@
     "@notionhq/client": "^2.2.15",
     "axios": "^1.6.7",
     "dotenv": "^16.4.1"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "prettier": "^3.3.3"
   }
 }

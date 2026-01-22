@@ -1,0 +1,17 @@
+name: Sync Notion Tasks
+
+on:
+  schedule:
+    # 每3分钟触发一次
+    - cron: '*/3 * * * *'
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger sync endpoint
+        run: |
+          curl -X POST "https://notion2quote.vercel.app/api/sync" \
+          -H "Content-Type: application/json" \
+          -d "{}"

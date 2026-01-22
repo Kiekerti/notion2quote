@@ -1,154 +1,188 @@
 /**
- * 日志工具模块
- * 提供统一的日志接口和不同级别的日志输出
+ * Logger utility
+ * Provides standardized logging with different levels and formats
  */
 
+const { getConfig } = require('../config');
+
 /**
- * 日志级别
+ * Log levels
  */
 const LOG_LEVELS = {
   DEBUG: 'debug',
   INFO: 'info',
   WARN: 'warn',
-  ERROR: 'error'
+  ERROR: 'error',
+  FATAL: 'fatal'
 };
 
 /**
- * 当前日志级别
+ * Log level priorities
  */
-let currentLogLevel = LOG_LEVELS.INFO;
+const LOG_LEVEL_PRIORITIES = {
+  [LOG_LEVELS.DEBUG]: 0,
+  [LOG_LEVELS.INFO]: 1,
+  [LOG_LEVELS.WARN]: 2,
+  [LOG_LEVELS.ERROR]: 3,
+  [LOG_LEVELS.FATAL]: 4
+};
 
 /**
- * 设置日志级别
- * @param {string} level 日志级别
+ * Logger class
  */
-function setLogLevel(level) {
-  if (Object.values(LOG_LEVELS).includes(level)) {
-    currentLogLevel = level;
+class Logger {
+  /**
+   * Create a new logger instance
+   * @param {string} name Logger name
+   */
+  constructor(name = 'app') {
+    this.name = name;
+    this.config = getConfig();
+    this.logLevel = this.config.app.logLevel || LOG_LEVELS.INFO;
+  }
+
+  /**
+   * Check if a log level should be logged
+   * @param {string} level Log level to check
+   * @returns {boolean} Whether the level should be logged
+   */
+  shouldLog(level) {
+    return LOG_LEVEL_PRIORITIES[level] >= LOG_LEVEL_PRIORITIES[this.logLevel];
+  }
+
+  /**
+   * Format a log message
+   * @param {string} level Log level
+   * @param {string} message Log message
+   * @param {Object} meta Metadata to include
+   * @returns {Object} Formatted log object
+   */
+  formatLog(level, message, meta = {}) {
+    return {
+      timestamp: new Date().toISOString(),
+      level,
+      name: this.name,
+      message,
+      meta,
+      pid: process.pid
+    };
+  }
+
+  /**
+   * Log a debug message
+   * @param {string} message Log message
+   * @param {Object} meta Metadata to include
+   */
+  debug(message, meta = {}) {
+    if (this.shouldLog(LOG_LEVELS.DEBUG)) {
+      const logObj = this.formatLog(LOG_LEVELS.DEBUG, message, meta);
+      console.log(JSON.stringify(logObj));
+    }
+  }
+
+  /**
+   * Log an info message
+   * @param {string} message Log message
+   * @param {Object} meta Metadata to include
+   */
+  info(message, meta = {}) {
+    if (this.shouldLog(LOG_LEVELS.INFO)) {
+      const logObj = this.formatLog(LOG_LEVELS.INFO, message, meta);
+      console.log(JSON.stringify(logObj));
+    }
+  }
+
+  /**
+   * Log a warning message
+   * @param {string} message Log message
+   * @param {Object} meta Metadata to include
+   */
+  warn(message, meta = {}) {
+    if (this.shouldLog(LOG_LEVELS.WARN)) {
+      const logObj = this.formatLog(LOG_LEVELS.WARN, message, meta);
+      console.warn(JSON.stringify(logObj));
+    }
+  }
+
+  /**
+   * Log an error message
+   * @param {string} message Log message
+   * @param {Object} meta Metadata to include
+   */
+  error(message, meta = {}) {
+    if (this.shouldLog(LOG_LEVELS.ERROR)) {
+      const logObj = this.formatLog(LOG_LEVELS.ERROR, message, meta);
+      console.error(JSON.stringify(logObj));
+    }
+  }
+
+  /**
+   * Log a fatal message
+   * @param {string} message Log message
+   * @param {Object} meta Metadata to include
+   */
+  fatal(message, meta = {}) {
+    if (this.shouldLog(LOG_LEVELS.FATAL)) {
+      const logObj = this.formatLog(LOG_LEVELS.FATAL, message, meta);
+      console.error(JSON.stringify(logObj));
+    }
   }
 }
 
+// Create default logger instance
+const defaultLogger = new Logger();
+
 /**
- * 获取当前日志级别
- * @returns {string} 当前日志级别
+ * Create a new logger instance
+ * @param {string} name Logger name
+ * @returns {Logger} Logger instance
  */
-function getLogLevel() {
-  return currentLogLevel;
+function createLogger(name) {
+  return new Logger(name);
 }
 
 /**
- * 检查日志级别是否应该输出
- * @param {string} level 日志级别
- * @returns {boolean} 是否应该输出
- */
-function shouldLog(level) {
-  const levelOrder = [LOG_LEVELS.DEBUG, LOG_LEVELS.INFO, LOG_LEVELS.WARN, LOG_LEVELS.ERROR];
-  return levelOrder.indexOf(level) >= levelOrder.indexOf(currentLogLevel);
-}
-
-/**
- * 生成带时间戳的日志消息
- * @param {string} level 日志级别
- * @param {string} message 日志消息
- * @param {Object} meta 附加元数据
- * @returns {string} 格式化的日志消息
- */
-function formatLogMessage(level, message, meta = {}) {
-  const timestamp = new Date().toISOString();
-  const metaString = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : '';
-  return `[${timestamp}] [${level.toUpperCase()}] ${message}${metaString}`;
-}
-
-/**
- * 调试级别日志
- * @param {string} message 日志消息
- * @param {Object} meta 附加元数据
- */
-function debug(message, meta = {}) {
-  if (shouldLog(LOG_LEVELS.DEBUG)) {
-    console.debug(formatLogMessage(LOG_LEVELS.DEBUG, message, meta));
-  }
-}
-
-/**
- * 信息级别日志
- * @param {string} message 日志消息
- * @param {Object} meta 附加元数据
- */
-function info(message, meta = {}) {
-  if (shouldLog(LOG_LEVELS.INFO)) {
-    console.info(formatLogMessage(LOG_LEVELS.INFO, message, meta));
-  }
-}
-
-/**
- * 警告级别日志
- * @param {string} message 日志消息
- * @param {Object} meta 附加元数据
- */
-function warn(message, meta = {}) {
-  if (shouldLog(LOG_LEVELS.WARN)) {
-    console.warn(formatLogMessage(LOG_LEVELS.WARN, message, meta));
-  }
-}
-
-/**
- * 错误级别日志
- * @param {string} message 日志消息
- * @param {Object} meta 附加元数据
- */
-function error(message, meta = {}) {
-  if (shouldLog(LOG_LEVELS.ERROR)) {
-    console.error(formatLogMessage(LOG_LEVELS.ERROR, message, meta));
-  }
-}
-
-/**
- * 记录 API 请求日志
- * @param {Object} req 请求对象
+ * Log request details
+ * @param {Object} req Express request object
  */
 function logRequest(req) {
-  // 过滤敏感的请求头信息
-  const safeHeaders = {};
-  const sensitiveHeaders = ['authorization', 'x-notion-signature', 'x-vercel-oidc-token'];
-  
-  if (req.headers) {
-    Object.keys(req.headers).forEach(header => {
-      if (!sensitiveHeaders.includes(header.toLowerCase())) {
-        safeHeaders[header] = req.headers[header];
-      }
-    });
-  }
-  
-  info('API 请求', {
+  defaultLogger.info('Request received', {
     method: req.method,
     url: req.url,
-    headers: safeHeaders,
-    body: req.body
+    headers: {
+      'content-type': req.headers['content-type'],
+      'user-agent': req.headers['user-agent']
+    },
+    ip: req.ip
   });
 }
 
 /**
- * 记录 API 响应日志
- * @param {Object} res 响应对象
- * @param {number} statusCode 状态码
- * @param {Object} data 响应数据
+ * Log response details
+ * @param {Object} res Express response object
+ * @param {number} statusCode Response status code
+ * @param {Object} data Response data
  */
 function logResponse(res, statusCode, data) {
-  info('API 响应', {
+  defaultLogger.info('Response sent', {
     statusCode,
-    data
+    data: {
+      success: data.success,
+      message: data.message,
+      taskCount: data.taskCount
+    }
   });
 }
 
+// Export all logger functions and utilities
 module.exports = {
-  setLogLevel,
-  getLogLevel,
-  debug,
-  info,
-  warn,
-  error,
+  debug: defaultLogger.debug.bind(defaultLogger),
+  info: defaultLogger.info.bind(defaultLogger),
+  warn: defaultLogger.warn.bind(defaultLogger),
+  error: defaultLogger.error.bind(defaultLogger),
+  fatal: defaultLogger.fatal.bind(defaultLogger),
+  createLogger,
+  LOG_LEVELS,
   logRequest,
-  logResponse,
-  LOG_LEVELS
+  logResponse
 };

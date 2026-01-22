@@ -32,7 +32,7 @@ module.exports = catchAsync(async (req, res) => {
   
   // 2. 分批发送到 Quote 设备
   info('正在分批发送到 Quote 设备...');
-  const success = await sendTasksInBatches(tasks);
+  const success = await sendTasksInBatches(tasks, 3, 2);
   
   if (success) {
       const successMessage = '成功发送到 Quote 设备！';
