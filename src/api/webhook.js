@@ -96,7 +96,18 @@ module.exports = catchAsync(async (req, res) => {
   info('收到 Notion Webhook 事件...');
   
   try {
-    // 1. 检查是否是 Notion 验证请求
+    // 1. 检查 req.body 是否存在
+    if (!req.body) {
+      const errorMessage = '请求体为空';
+      error(errorMessage);
+      logResponse(res, 400, { success: false, message: errorMessage });
+      return res.status(400).json({ 
+        success: false, 
+        message: errorMessage
+      });
+    }
+    
+    // 2. 检查是否是 Notion 验证请求
     if (req.body.type === 'block.created' && req.body.data?.block?.type === 'paragraph' && req.body.data?.block?.paragraph?.rich_text?.[0]?.text?.content) {
       const verificationToken = req.body.data.block.paragraph.rich_text[0].text.content;
       info(`收到 Notion 验证请求，验证令牌: ${verificationToken}`);
@@ -108,13 +119,13 @@ module.exports = catchAsync(async (req, res) => {
       });
     }
     
-    // 2. 检查是否是 Notion 事件（跳过签名验证，因为 Notion 可能不发送签名或签名格式不一致）
+    // 3. 检查是否是 Notion 事件（跳过签名验证，因为 Notion 可能不发送签名或签名格式不一致）
     if (req.body.workspace_id && (req.body.type === 'page.created' || req.body.type === 'page.updated' || req.body.type === 'page.properties_updated' || req.body.type === 'database_item')) {
       info(`收到 Notion ${req.body.type} 事件，跳过签名验证`);
       
       // 继续处理事件，不验证签名
     } else {
-      // 3. 验证 Notion Webhook 签名（仅对其他事件类型）
+      // 4. 验证 Notion Webhook 签名（仅对其他事件类型）
       const signature = req.headers['x-notion-signature'];
       const payload = JSON.stringify(req.body);
       
@@ -129,7 +140,7 @@ module.exports = catchAsync(async (req, res) => {
       }
     }
     
-    // 3. 检查环境变量
+    // 5. 检查环境变量
     const envCheck = checkEnvVariables();
     if (!envCheck.success) {
       const errorMessage = '环境变量配置不完整';
