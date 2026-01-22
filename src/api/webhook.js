@@ -5,6 +5,60 @@ const { info, error, logRequest, logResponse } = require('../utils/logger');
 const { catchAsync } = require('../utils/errorHandler');
 const crypto = require('crypto');
 
+// 事件去重缓存
+const processedEvents = new Set();
+// 缓存大小限制
+const MAX_CACHE_SIZE = 1000;
+
+// API 调用频率限制
+const apiCalls = [];
+const MAX_CALLS_PER_MINUTE = 60; // 每分钟最多 60 次调用
+
+/**
+ * 检查事件是否已处理
+ * @param {string} eventId 事件 ID
+ * @returns {boolean} 是否已处理
+ */
+function isEventProcessed(eventId) {
+  return processedEvents.has(eventId);
+}
+
+/**
+ * 添加事件到已处理集合
+ * @param {string} eventId 事件 ID
+ */
+function addProcessedEvent(eventId) {
+  if (processedEvents.size >= MAX_CACHE_SIZE) {
+    // 当缓存达到上限时，清除一半的缓存
+    const oldestEvents = Array.from(processedEvents).slice(0, MAX_CACHE_SIZE / 2);
+    oldestEvents.forEach(id => processedEvents.delete(id));
+  }
+  processedEvents.add(eventId);
+}
+
+/**
+ * 检查是否超过 API 调用频率限制
+ * @returns {boolean} 是否超过限制
+ */
+function isOverRateLimit() {
+  const now = Date.now();
+  // 过滤出一分钟内的调用
+  const recentCalls = apiCalls.filter(timestamp => now - timestamp < 60000);
+  return recentCalls.length >= MAX_CALLS_PER_MINUTE;
+}
+
+/**
+ * 记录 API 调用
+ */
+function recordApiCall() {
+  apiCalls.push(Date.now());
+  // 清理旧的调用记录
+  const now = Date.now();
+  while (apiCalls.length > 0 && now - apiCalls[0] >= 60000) {
+    apiCalls.shift();
+  }
+}
+
 /**
  * 验证 Notion Webhook 签名
  * @param {string} signature Notion 签名
@@ -91,45 +145,96 @@ module.exports = catchAsync(async (req, res) => {
     const notionEvent = req.body;
     info('Notion 事件数据:', notionEvent);
     
-    // 5. 检查是否是数据库更新事件
+    // 5. 检查事件是否已处理（去重）
+    if (notionEvent.id && isEventProcessed(notionEvent.id)) {
+      info(`事件 ${notionEvent.id} 已处理，跳过重复处理`);
+      logResponse(res, 200, { 
+        success: true, 
+        message: '事件已处理，跳过重复处理'
+      });
+      return res.status(200).json({ 
+        success: true, 
+        message: '事件已处理，跳过重复处理'
+      });
+    }
+    
+    // 6. 检查 API 调用频率限制
+    if (isOverRateLimit()) {
+      const errorMessage = 'API 调用频率超过限制，请稍后再试';
+      error(errorMessage);
+      logResponse(res, 429, { 
+        success: false, 
+        message: errorMessage
+      });
+      return res.status(429).json({ 
+        success: false, 
+        message: errorMessage
+      });
+    }
+    
+    // 7. 检查是否是数据库更新事件
     if (notionEvent.object === 'event' || notionEvent.type === 'database_item' || notionEvent.type === 'page.created' || notionEvent.type === 'page.updated' || notionEvent.type === 'page.properties_updated') {
       info('检测到数据库项目更新事件');
       
-      // 6. 执行同步操作
-      info('正在执行同步操作...');
+      // 8. 记录 API 调用
+      recordApiCall();
       
-      // 6.1 获取 Notion 进行中项目
-      const tasks = await getNotionTasks();
-      info(`获取到 ${tasks.length} 个进行中项目`, { tasks });
-      
-      // 6.2 发送到 Quote 设备
-      const success = await sendToQuoteDevice(tasks);
-      
-      if (success) {
-        const successMessage = '成功同步到 Quote 设备！';
-        info(successMessage);
-        logResponse(res, 200, { 
-          success: true, 
-          message: successMessage,
-          taskCount: tasks.length,
-          tasks: tasks
-        });
-        return res.status(200).json({ 
-          success: true, 
-          message: successMessage,
-          taskCount: tasks.length,
-          tasks: tasks
-        });
-      } else {
-        const errorMessage = '同步到 Quote 设备失败';
-        error(errorMessage);
+      try {
+        // 9. 执行同步操作
+        info('正在执行同步操作...');
+        
+        // 9.1 获取 Notion 进行中项目
+        const tasks = await getNotionTasks();
+        info(`获取到 ${tasks.length} 个进行中项目`, { tasks });
+        
+        // 9.2 发送到 Quote 设备
+        const success = await sendToQuoteDevice(tasks);
+        
+        // 10. 添加事件到已处理集合
+        if (notionEvent.id) {
+          addProcessedEvent(notionEvent.id);
+        }
+        
+        if (success) {
+          const successMessage = '成功同步到 Quote 设备！';
+          info(successMessage);
+          logResponse(res, 200, { 
+            success: true, 
+            message: successMessage,
+            taskCount: tasks.length,
+            tasks: tasks
+          });
+          return res.status(200).json({ 
+            success: true, 
+            message: successMessage,
+            taskCount: tasks.length,
+            tasks: tasks
+          });
+        } else {
+          const errorMessage = '同步到 Quote 设备失败';
+          error(errorMessage);
+          logResponse(res, 500, { 
+            success: false, 
+            message: errorMessage
+          });
+          return res.status(500).json({ 
+            success: false, 
+            message: errorMessage
+          });
+        }
+      } catch (err) {
+        error('同步操作失败', { error: err.message, stack: err.stack });
+        // 添加事件到已处理集合，避免重复尝试
+        if (notionEvent.id) {
+          addProcessedEvent(notionEvent.id);
+        }
         logResponse(res, 500, { 
           success: false, 
-          message: errorMessage
+          message: '同步操作失败'
         });
         return res.status(500).json({ 
           success: false, 
-          message: errorMessage
+          message: '同步操作失败'
         });
       }
     } else {
