@@ -82,7 +82,7 @@ async function getNotionTasks() {
       filter: filter,
       sorts: [
         {
-          property: 'Created',
+          property: '创建日期',
           direction: 'descending'
         }
       ]
