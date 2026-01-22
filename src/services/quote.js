@@ -15,11 +15,13 @@ let syncLock = false;
  * @param {Array} tasks 任务列表
  * @param {number} batchNumber 当前批次编号
  * @param {number} totalBatches 总批次数
+ * @param {number} startIndex 任务起始索引
  * @returns {string} 格式化后的消息文本
  */
-function formatTasksMessage(tasks, batchNumber = 1, totalBatches = 1) {
+function formatTasksMessage(tasks, batchNumber = 1, totalBatches = 1, startIndex = 0) {
   const config = getConfig();
-  let tasksText = tasks.map((task, index) => `${index + 1}. ${task}`).join('\n');
+  // 使用起始索引确保任务编号在整个列表中是唯一的
+  let tasksText = tasks.map((task, index) => `${startIndex + index + 1}. ${task}`).join('\n');
   
   // 限制消息长度
   if (tasksText.length > config.app.maxMessageLength) {
@@ -35,17 +37,22 @@ function formatTasksMessage(tasks, batchNumber = 1, totalBatches = 1) {
  * @param {number} batchNumber 当前批次编号
  * @param {number} totalBatches 总批次数
  * @param {number} totalTasks 总任务数
+ * @param {Date} fetchTime 任务拉取时间
+ * @param {number} startIndex 任务起始索引
  * @returns {Object} 请求数据对象
  */
-function buildRequestData(tasks, batchNumber = 1, totalBatches = 1, totalTasks = 0) {
+function buildRequestData(tasks, batchNumber = 1, totalBatches = 1, totalTasks = 0, fetchTime = new Date(), startIndex = 0) {
   const taskCount = tasks.length;
-  const tasksText = formatTasksMessage(tasks, batchNumber, totalBatches);
+  const tasksText = formatTasksMessage(tasks, batchNumber, totalBatches, startIndex);
+  
+  // 格式化时间为 "2026-01-22 17:09:41" 格式
+  const formattedTime = fetchTime.toISOString().replace('T', ' ').substring(0, 19);
   
   return {
     refreshNow: true,
     title: `待办事项 (${batchNumber}/${totalBatches})`,
     message: tasksText,
-    signature: `总共有 ${totalTasks} 个待办事项`,
+    signature: `${totalTasks} 个 · ${formattedTime}`,
     icon: '',
     link: 'https://www.notion.so/kieker/2a8935d95ce580109f12e9ce4edf114a?v=2aa935d95ce580d99ee9000c1cee44c5',
     taskKey: ''
@@ -119,6 +126,9 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2) {
     const totalTasks = tasks.length;
     const totalBatches = Math.ceil(totalTasks / batchSize);
     
+    // 记录任务拉取时间
+    const fetchTime = new Date();
+    
     info(`开始分批发送任务，共 ${totalTasks} 个任务，${totalBatches} 批，每批 ${batchSize} 个任务，间隔 ${intervalMinutes} 分钟`);
     
     // 如果任务数量为 0，直接返回成功
@@ -142,7 +152,7 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2) {
       info(`当前批次任务: ${batchTasks.length} 个 (${currentBatch}/${totalBatches})`, { tasks: batchTasks });
       
       // 发送当前批次的任务
-      const requestData = buildRequestData(batchTasks, currentBatch, totalBatches, totalTasks);
+      const requestData = buildRequestData(batchTasks, currentBatch, totalBatches, totalTasks, fetchTime, startIndex);
       
       try {
         info('发送批次任务到 Quote 设备', { 
