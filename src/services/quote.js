@@ -121,7 +121,7 @@ async function sendToQuoteDevice(tasks) {
  * @param {number} batchSize 每批任务数量
  * @param {number} intervalMinutes 批次间隔时间（分钟）
  * @param {boolean} forceSync 是否强制同步（Webhook 触发时使用）
- * @returns {Promise<boolean>} 是否所有批次发送成功
+ * @returns {Promise<boolean>} 是否发送成功
  */
 async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2, forceSync = false) {
   // 生成新的同步 ID
@@ -155,15 +155,10 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2, for
     const totalTasks = tasks.length;
     const totalBatches = Math.ceil(totalTasks / batchSize);
     
-    // 计算动态切换时间：15分钟除以总页数再除以3
-    const totalPages = totalBatches;
-    const dynamicIntervalMinutes = 15 / totalPages / 3;
-    const dynamicIntervalSeconds = Math.max(Math.floor(dynamicIntervalMinutes * 60), 5); // 最小5秒
-    
     // 记录任务拉取时间
     const fetchTime = new Date();
     
-    info(`开始分批发送任务，共 ${totalTasks} 个任务，${totalBatches} 批，每批 ${batchSize} 个任务，动态间隔 ${dynamicIntervalSeconds} 秒`);
+    info(`开始分批发送任务，共 ${totalTasks} 个任务，${totalBatches} 批，每批 ${batchSize} 个任务`);
     
     // 如果任务数量为 0，直接返回成功
     if (totalTasks === 0) {
@@ -171,129 +166,73 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2, for
       return true;
     }
     
-    // 存储所有批次的发送结果
-    const results = [];
+    // 根据当前时间计算应该显示的批次
+    // 使用分钟数作为种子，每15分钟切换一次批次
+    const now = new Date();
+    const minutesSinceMidnight = now.getHours() * 60 + now.getMinutes();
+    const batchInterval = 15; // 每15分钟切换一次批次
+    const currentBatch = ((minutesSinceMidnight / batchInterval) % totalBatches) + 1;
     
-    // 循环 3 次显示所有批次
-    for (let loop = 0; loop < 3; loop++) {
-      info(`开始第 ${loop + 1} 轮循环`);
+    info(`当前时间计算的批次: ${Math.round(currentBatch)}/${totalBatches}`);
+    
+    // 计算当前批次的任务范围
+    const startIndex = (Math.round(currentBatch) - 1) * batchSize;
+    const endIndex = Math.min(startIndex + batchSize, totalTasks);
+    const batchTasks = tasks.slice(startIndex, endIndex);
+    
+    info(`当前批次任务: ${batchTasks.length} 个 (${Math.round(currentBatch)}/${totalBatches})`, { tasks: batchTasks });
+    
+    // 发送当前批次的任务
+    const requestData = buildRequestData(batchTasks, Math.round(currentBatch), totalBatches, totalTasks, fetchTime, startIndex);
+    
+    try {
+      info('发送批次任务到 Quote 设备', { 
+        batch: Math.round(currentBatch), 
+        totalBatches, 
+        taskCount: batchTasks.length 
+      });
       
-      // 遍历所有批次，依次发送
-      for (let i = 0; i < totalBatches; i++) {
-        const currentBatch = i + 1;
-        
-        // 计算当前批次的任务范围
-        const startIndex = i * batchSize;
-        const endIndex = Math.min(startIndex + batchSize, totalTasks);
-        const batchTasks = tasks.slice(startIndex, endIndex);
-        
-        info(`当前批次任务: ${batchTasks.length} 个 (${currentBatch}/${totalBatches})`, { tasks: batchTasks });
-        
-        // 发送当前批次的任务
-        const requestData = buildRequestData(batchTasks, currentBatch, totalBatches, totalTasks, fetchTime, startIndex);
-        
-        try {
-          info('发送批次任务到 Quote 设备', { 
-            batch: currentBatch, 
-            totalBatches, 
-            taskCount: batchTasks.length 
-          });
-          
-          const response = await axios.post(
-            config.quote.apiEndpoint,
-            requestData,
-            {
-              headers: {
-                'Authorization': `Bearer ${config.quote.apiKey}`,
-                'Content-Type': 'application/json'
-              },
-              timeout: config.app.timeout
-            }
-          );
-          
-          // 验证响应
-          if (response && (response.status === 200 || response.data.code === 200)) {
-            info('批次发送成功！', { 
-              batch: currentBatch, 
-              status: response.status 
-            });
-            results.push(true);
-          } else {
-            error('批次发送失败', { 
-              batch: currentBatch,
-              status: response?.status, 
-              data: response?.data 
-            });
-            results.push(false);
-          }
-        } catch (err) {
-          error('发送批次任务到 Quote 设备时出错', { 
-            batch: currentBatch,
-            error: err.message 
-          });
-          if (err.response) {
-            // 服务器返回错误状态码
-            error('响应状态错误', { status: err.response.status, data: err.response.data });
-          } else if (err.request) {
-            // 请求已发送但没有收到响应
-            error('没有收到响应');
-          }
-          results.push(false);
+      const response = await axios.post(
+        config.quote.apiEndpoint,
+        requestData,
+        {
+          headers: {
+            'Authorization': `Bearer ${config.quote.apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: config.app.timeout
         }
-        
-        // 如果不是最后一批，等待动态计算的间隔时间
-        if (currentBatch < totalBatches) {
-          info(`等待 ${dynamicIntervalSeconds} 秒后发送下一批次...`);
-          await new Promise(resolve => {
-            activeSyncTimeout = setTimeout(() => {
-              // 检查当前同步操作是否仍然是最新的
-              if (activeSyncId !== syncId) {
-                info(`同步操作 ${syncId} 已被新的操作 ${activeSyncId} 替换，终止当前操作`);
-                // 提前解决并返回，不再继续执行
-                resolve({ cancelled: true });
-              } else {
-                resolve({ cancelled: false });
-              }
-            }, dynamicIntervalSeconds * 1000);
-          });
-          
-          // 检查是否被取消
-          if (activeSyncId !== syncId) {
-            info(`同步操作已被取消，提前终止`);
-            return false;
-          }
-        }
-      }
+      );
       
-      // 如果不是最后一轮，等待一个批次的间隔时间
-      if (loop < 2) {
-        info(`等待 ${dynamicIntervalSeconds} 秒后开始下一轮循环...`);
-        await new Promise(resolve => {
-          activeSyncTimeout = setTimeout(() => {
-            // 检查当前同步操作是否仍然是最新的
-            if (activeSyncId !== syncId) {
-              info(`同步操作 ${syncId} 已被新的操作 ${activeSyncId} 替换，终止当前操作`);
-              // 提前解决并返回，不再继续执行
-              resolve({ cancelled: true });
-            } else {
-              resolve({ cancelled: false });
-            }
-          }, dynamicIntervalSeconds * 1000);
+      // 验证响应
+      if (response && (response.status === 200 || response.data.code === 200)) {
+        info('批次发送成功！', { 
+          batch: Math.round(currentBatch), 
+          status: response.status 
         });
-        
-        // 检查是否被取消
-        if (activeSyncId !== syncId) {
-          info(`同步操作已被取消，提前终止`);
-          return false;
-        }
+        return true;
+      } else {
+        error('批次发送失败', { 
+          batch: Math.round(currentBatch),
+          status: response?.status, 
+          data: response?.data 
+        });
+        return false;
       }
+    } catch (err) {
+      error('发送批次任务到 Quote 设备时出错', { 
+        batch: Math.round(currentBatch),
+        error: err.message 
+      });
+      if (err.response) {
+        // 服务器返回错误状态码
+        error('响应状态错误', { status: err.response.status, data: err.response.data });
+      } else if (err.request) {
+        // 请求已发送但没有收到响应
+        error('没有收到响应');
+      }
+      return false;
     }
-    
-    // 检查所有批次是否都发送成功
-    const allSuccess = results.every(result => result === true);
-    info(`所有批次发送完成，成功率: ${results.filter(r => r).length}/${results.length}`);
-    
-    return allSuccess;
   } catch (err) {
     error('分批发送任务时出错', { error: err.message });
     return false;
