@@ -1,8 +1,7 @@
 const { checkEnvVariables } = require('../config');
-const { getNotionTasks } = require('../services/notion');
-const { sendTasksInBatches } = require('../services/quote');
 const { info, error, logRequest, logResponse } = require('../utils/logger');
 const { catchAsync } = require('../utils/errorHandler');
+const { addSyncTask } = require('../services/syncService');
 
 /**
  * Vercel API 处理函数
@@ -25,38 +24,56 @@ module.exports = catchAsync(async (req, res) => {
     });
   }
   
-  // 1. 获取 Notion 进行中项目
-  info('正在从 Notion 获取进行中项目...');
-  const tasks = await getNotionTasks();
-  info(`获取到 ${tasks.length} 个进行中项目`);
-  
-  // 2. 分批发送到 Quote 设备
-  info('正在分批发送到 Quote 设备...');
-  const success = await sendTasksInBatches(tasks, 3, 2);
-  
-  if (success) {
-      const successMessage = '成功发送到 Quote 设备！';
-      info(successMessage);
-      logResponse(res, 200, { 
-        success: true, 
-        message: successMessage,
-        taskCount: tasks.length
-      });
-      return res.status(200).json({ 
-        success: true, 
-        message: successMessage,
-        taskCount: tasks.length
-      });
-    } else {
-      const errorMessage = '发送到 Quote 设备失败';
-      error(errorMessage);
-      logResponse(res, 500, { 
-        success: false, 
-        message: errorMessage
-      });
-      return res.status(500).json({ 
-        success: false, 
-        message: errorMessage
-      });
+  // 添加同步任务到队列（手动触发，不使用强制同步）
+  const taskAdded = await addSyncTask({
+    type: 'sync',
+    forceSync: false,
+    callback: (success) => {
+      if (success) {
+        const successMessage = '成功发送到 Quote 设备！';
+        info(successMessage);
+        logResponse(res, 200, { 
+          success: true, 
+          message: successMessage
+        });
+        return res.status(200).json({ 
+          success: true, 
+          message: successMessage
+        });
+      } else {
+        const errorMessage = '发送到 Quote 设备失败';
+        error(errorMessage);
+        logResponse(res, 500, { 
+          success: false, 
+          message: errorMessage
+        });
+        return res.status(500).json({ 
+          success: false, 
+          message: errorMessage
+        });
+      }
     }
+  });
+  
+  if (!taskAdded) {
+    // 任务已存在或已处理，返回成功
+    logResponse(res, 200, { 
+      success: true, 
+      message: '同步任务已在处理中'
+    });
+    return res.status(200).json({ 
+      success: true, 
+      message: '同步任务已在处理中'
+    });
+  }
+  
+  // 任务已添加到队列，返回接受状态
+  logResponse(res, 202, { 
+    success: true, 
+    message: '同步任务已接受，正在处理'
+  });
+  return res.status(202).json({ 
+    success: true, 
+    message: '同步任务已接受，正在处理'
+  });
 });
