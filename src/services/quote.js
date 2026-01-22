@@ -5,6 +5,8 @@ const { info, error } = require('../utils/logger');
 // 同步锁，确保同一时间只有一个同步操作在执行
 let syncLock = false;
 let currentSyncId = 0;
+let activeSyncId = null;
+let activeSyncTimeout = null;
 
 /**
  * Quote 服务模块
@@ -22,7 +24,11 @@ let currentSyncId = 0;
 function formatTasksMessage(tasks, batchNumber = 1, totalBatches = 1, startIndex = 0) {
   const config = getConfig();
   // 使用起始索引确保任务编号在整个列表中是唯一的
-  let tasksText = tasks.map((task, index) => `${startIndex + index + 1}. ${task}`).join('\n');
+  let tasksText = tasks.map((task, index) => {
+    // 限制任务文本长度为 11 个字，超出部分用...替代
+    const limitedTask = task.length > 11 ? task.substring(0, 11) + '...' : task;
+    return `${startIndex + index + 1}. ${limitedTask}`;
+  }).join('\n');
   
   // 限制消息长度
   if (tasksText.length > config.app.maxMessageLength) {
@@ -132,10 +138,17 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2, for
   if (forceSync && syncLock) {
     info('强制同步，释放现有锁');
     syncLock = false;
+    // 取消之前的同步操作
+    if (activeSyncTimeout) {
+      clearTimeout(activeSyncTimeout);
+      info('已取消之前的同步操作');
+    }
   }
   
   // 获取锁
   syncLock = true;
+  // 设置当前活动的同步 ID
+  activeSyncId = syncId;
   
   try {
     const config = getConfig();
@@ -231,14 +244,48 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2, for
         // 如果不是最后一批，等待动态计算的间隔时间
         if (currentBatch < totalBatches) {
           info(`等待 ${dynamicIntervalSeconds} 秒后发送下一批次...`);
-          await new Promise(resolve => setTimeout(resolve, dynamicIntervalSeconds * 1000));
+          await new Promise(resolve => {
+            activeSyncTimeout = setTimeout(() => {
+              // 检查当前同步操作是否仍然是最新的
+              if (activeSyncId !== syncId) {
+                info(`同步操作 ${syncId} 已被新的操作 ${activeSyncId} 替换，终止当前操作`);
+                // 提前解决并返回，不再继续执行
+                resolve({ cancelled: true });
+              } else {
+                resolve({ cancelled: false });
+              }
+            }, dynamicIntervalSeconds * 1000);
+          });
+          
+          // 检查是否被取消
+          if (activeSyncId !== syncId) {
+            info(`同步操作已被取消，提前终止`);
+            return false;
+          }
         }
       }
       
       // 如果不是最后一轮，等待一个批次的间隔时间
       if (loop < 2) {
         info(`等待 ${dynamicIntervalSeconds} 秒后开始下一轮循环...`);
-        await new Promise(resolve => setTimeout(resolve, dynamicIntervalSeconds * 1000));
+        await new Promise(resolve => {
+          activeSyncTimeout = setTimeout(() => {
+            // 检查当前同步操作是否仍然是最新的
+            if (activeSyncId !== syncId) {
+              info(`同步操作 ${syncId} 已被新的操作 ${activeSyncId} 替换，终止当前操作`);
+              // 提前解决并返回，不再继续执行
+              resolve({ cancelled: true });
+            } else {
+              resolve({ cancelled: false });
+            }
+          }, dynamicIntervalSeconds * 1000);
+        });
+        
+        // 检查是否被取消
+        if (activeSyncId !== syncId) {
+          info(`同步操作已被取消，提前终止`);
+          return false;
+        }
       }
     }
     
@@ -253,6 +300,11 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2, for
   } finally {
     // 释放锁
     syncLock = false;
+    // 清理超时定时器
+    if (activeSyncTimeout) {
+      clearTimeout(activeSyncTimeout);
+      activeSyncTimeout = null;
+    }
     info('同步锁已释放');
   }
 }
