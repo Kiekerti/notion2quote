@@ -35,30 +35,28 @@ module.exports = catchAsync(async (req, res) => {
   const success = await sendToQuoteDevice(tasks);
   
   if (success) {
-    const successMessage = '成功发送到 Quote 设备！';
-    info(successMessage);
-    logResponse(res, 200, { 
-      success: true, 
-      message: successMessage,
-      taskCount: tasks.length,
-      tasks: tasks
-    });
-    return res.status(200).json({ 
-      success: true, 
-      message: successMessage,
-      taskCount: tasks.length,
-      tasks: tasks
-    });
-  } else {
-    const errorMessage = '发送到 Quote 设备失败';
-    error(errorMessage);
-    logResponse(res, 500, { 
-      success: false, 
-      message: errorMessage
-    });
-    return res.status(500).json({ 
-      success: false, 
-      message: errorMessage
-    });
-  }
+      const successMessage = '成功发送到 Quote 设备！';
+      info(successMessage);
+      logResponse(res, 200, { 
+        success: true, 
+        message: successMessage,
+        taskCount: tasks.length
+      });
+      return res.status(200).json({ 
+        success: true, 
+        message: successMessage,
+        taskCount: tasks.length
+      });
+    } else {
+      const errorMessage = '发送到 Quote 设备失败';
+      error(errorMessage);
+      logResponse(res, 500, { 
+        success: false, 
+        message: errorMessage
+      });
+      return res.status(500).json({ 
+        success: false, 
+        message: errorMessage
+      });
+    }
 });

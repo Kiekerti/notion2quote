@@ -194,21 +194,18 @@ module.exports = catchAsync(async (req, res) => {
         if (notionEvent.id) {
           addProcessedEvent(notionEvent.id);
         }
-        
-        if (success) {
+                if (success) {
           const successMessage = '成功同步到 Quote 设备！';
           info(successMessage);
           logResponse(res, 200, { 
             success: true, 
             message: successMessage,
-            taskCount: tasks.length,
-            tasks: tasks
+            taskCount: tasks.length
           });
           return res.status(200).json({ 
             success: true, 
             message: successMessage,
-            taskCount: tasks.length,
-            tasks: tasks
+            taskCount: tasks.length
           });
         } else {
           const errorMessage = '同步到 Quote 设备失败';
@@ -221,8 +218,7 @@ module.exports = catchAsync(async (req, res) => {
             success: false, 
             message: errorMessage
           });
-        }
-      } catch (err) {
+        }      } catch (err) {
         error('同步操作失败', { error: err.message, stack: err.stack });
         // 添加事件到已处理集合，避免重复尝试
         if (notionEvent.id) {
