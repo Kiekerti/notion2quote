@@ -198,8 +198,8 @@ module.exports = catchAsync(async (req, res) => {
         const tasks = await getNotionTasks();
         info(`获取到 ${tasks.length} 个进行中项目`);
         
-        // 9.2 分批发送到 Quote 设备
-        const success = await sendTasksInBatches(tasks);
+        // 9.2 分批发送到 Quote 设备（Webhook 触发，使用强制同步）
+        const success = await sendTasksInBatches(tasks, 3, 2, true);
         
         // 10. 添加事件到已处理集合
         if (notionEvent.id) {

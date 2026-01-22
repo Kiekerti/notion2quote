@@ -79,7 +79,13 @@ async function getNotionTasks() {
     
     const response = await notion.databases.query({
       database_id: databaseId,
-      filter: filter
+      filter: filter,
+      sorts: [
+        {
+          property: 'Created',
+          direction: 'descending'
+        }
+      ]
     });
 
     // 验证响应格式
@@ -105,11 +111,23 @@ async function getNotionTasks() {
         title = page.properties.Name?.title?.map(t => t.plain_text).join('') || '';
       }
       
-      return title;
-    }).filter(title => title.trim() !== ''); // 过滤空标题
+      // 获取创建时间
+      const createdAt = page.created_time || new Date().toISOString();
+      
+      return {
+        title,
+        createdAt
+      };
+    }).filter(task => task.title.trim() !== ''); // 过滤空标题
     
-    info(`获取到 ${tasks.length} 个进行中项目`);
-    return tasks;
+    // 按创建时间排序，最新的在前面
+    tasks.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    
+    // 提取标题，保持排序顺序
+    const sortedTaskTitles = tasks.map(task => task.title);
+    
+    info(`获取到 ${sortedTaskTitles.length} 个进行中项目`);
+    return sortedTaskTitles;
   } catch (err) {
     error('从 Notion 获取任务时出错', { error: err.message });
     if (err.response) {

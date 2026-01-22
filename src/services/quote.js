@@ -4,6 +4,7 @@ const { info, error } = require('../utils/logger');
 
 // 同步锁，确保同一时间只有一个同步操作在执行
 let syncLock = false;
+let currentSyncId = 0;
 
 /**
  * Quote 服务模块
@@ -113,13 +114,24 @@ async function sendToQuoteDevice(tasks) {
  * @param {Array} tasks 任务列表
  * @param {number} batchSize 每批任务数量
  * @param {number} intervalMinutes 批次间隔时间（分钟）
+ * @param {boolean} forceSync 是否强制同步（Webhook 触发时使用）
  * @returns {Promise<boolean>} 是否所有批次发送成功
  */
-async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2) {
+async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2, forceSync = false) {
+  // 生成新的同步 ID
+  const syncId = ++currentSyncId;
+  info(`开始同步操作，ID: ${syncId}, 强制同步: ${forceSync}`);
+  
   // 检查是否有同步操作正在执行
-  if (syncLock) {
+  if (syncLock && !forceSync) {
     info('有同步操作正在执行，跳过本次操作');
     return true;
+  }
+  
+  // 如果是强制同步且有操作正在执行，先释放锁
+  if (forceSync && syncLock) {
+    info('强制同步，释放现有锁');
+    syncLock = false;
   }
   
   // 获取锁
@@ -130,10 +142,15 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2) {
     const totalTasks = tasks.length;
     const totalBatches = Math.ceil(totalTasks / batchSize);
     
+    // 计算动态切换时间：15分钟除以总页数再除以3
+    const totalPages = totalBatches;
+    const dynamicIntervalMinutes = 15 / totalPages / 3;
+    const dynamicIntervalSeconds = Math.max(Math.floor(dynamicIntervalMinutes * 60), 5); // 最小5秒
+    
     // 记录任务拉取时间
     const fetchTime = new Date();
     
-    info(`开始分批发送任务，共 ${totalTasks} 个任务，${totalBatches} 批，每批 ${batchSize} 个任务，间隔 ${intervalMinutes} 分钟`);
+    info(`开始分批发送任务，共 ${totalTasks} 个任务，${totalBatches} 批，每批 ${batchSize} 个任务，动态间隔 ${dynamicIntervalSeconds} 秒`);
     
     // 如果任务数量为 0，直接返回成功
     if (totalTasks === 0) {
@@ -144,80 +161,90 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2) {
     // 存储所有批次的发送结果
     const results = [];
     
-    // 遍历所有批次，依次发送
-    for (let i = 0; i < totalBatches; i++) {
-      const currentBatch = i + 1;
+    // 循环 3 次显示所有批次
+    for (let loop = 0; loop < 3; loop++) {
+      info(`开始第 ${loop + 1} 轮循环`);
       
-      // 计算当前批次的任务范围
-      const startIndex = i * batchSize;
-      const endIndex = Math.min(startIndex + batchSize, totalTasks);
-      const batchTasks = tasks.slice(startIndex, endIndex);
-      
-      info(`当前批次任务: ${batchTasks.length} 个 (${currentBatch}/${totalBatches})`, { tasks: batchTasks });
-      
-      // 发送当前批次的任务
-      const requestData = buildRequestData(batchTasks, currentBatch, totalBatches, totalTasks, fetchTime, startIndex);
-      
-      try {
-        info('发送批次任务到 Quote 设备', { 
-          batch: currentBatch, 
-          totalBatches, 
-          taskCount: batchTasks.length 
-        });
+      // 遍历所有批次，依次发送
+      for (let i = 0; i < totalBatches; i++) {
+        const currentBatch = i + 1;
         
-        const response = await axios.post(
-          config.quote.apiEndpoint,
-          requestData,
-          {
-            headers: {
-              'Authorization': `Bearer ${config.quote.apiKey}`,
-              'Content-Type': 'application/json'
-            },
-            timeout: config.app.timeout
-          }
-        );
+        // 计算当前批次的任务范围
+        const startIndex = i * batchSize;
+        const endIndex = Math.min(startIndex + batchSize, totalTasks);
+        const batchTasks = tasks.slice(startIndex, endIndex);
         
-        // 验证响应
-        if (response && (response.status === 200 || response.data.code === 200)) {
-          info('批次发送成功！', { 
+        info(`当前批次任务: ${batchTasks.length} 个 (${currentBatch}/${totalBatches})`, { tasks: batchTasks });
+        
+        // 发送当前批次的任务
+        const requestData = buildRequestData(batchTasks, currentBatch, totalBatches, totalTasks, fetchTime, startIndex);
+        
+        try {
+          info('发送批次任务到 Quote 设备', { 
             batch: currentBatch, 
-            status: response.status 
+            totalBatches, 
+            taskCount: batchTasks.length 
           });
-          results.push(true);
-        } else {
-          error('批次发送失败', { 
+          
+          const response = await axios.post(
+            config.quote.apiEndpoint,
+            requestData,
+            {
+              headers: {
+                'Authorization': `Bearer ${config.quote.apiKey}`,
+                'Content-Type': 'application/json'
+              },
+              timeout: config.app.timeout
+            }
+          );
+          
+          // 验证响应
+          if (response && (response.status === 200 || response.data.code === 200)) {
+            info('批次发送成功！', { 
+              batch: currentBatch, 
+              status: response.status 
+            });
+            results.push(true);
+          } else {
+            error('批次发送失败', { 
+              batch: currentBatch,
+              status: response?.status, 
+              data: response?.data 
+            });
+            results.push(false);
+          }
+        } catch (err) {
+          error('发送批次任务到 Quote 设备时出错', { 
             batch: currentBatch,
-            status: response?.status, 
-            data: response?.data 
+            error: err.message 
           });
+          if (err.response) {
+            // 服务器返回错误状态码
+            error('响应状态错误', { status: err.response.status, data: err.response.data });
+          } else if (err.request) {
+            // 请求已发送但没有收到响应
+            error('没有收到响应');
+          }
           results.push(false);
         }
-      } catch (err) {
-        error('发送批次任务到 Quote 设备时出错', { 
-          batch: currentBatch,
-          error: err.message 
-        });
-        if (err.response) {
-          // 服务器返回错误状态码
-          error('响应状态错误', { status: err.response.status, data: err.response.data });
-        } else if (err.request) {
-          // 请求已发送但没有收到响应
-          error('没有收到响应');
+        
+        // 如果不是最后一批，等待动态计算的间隔时间
+        if (currentBatch < totalBatches) {
+          info(`等待 ${dynamicIntervalSeconds} 秒后发送下一批次...`);
+          await new Promise(resolve => setTimeout(resolve, dynamicIntervalSeconds * 1000));
         }
-        results.push(false);
       }
       
-      // 如果不是最后一批，等待指定的间隔时间
-      if (currentBatch < totalBatches) {
-        const intervalMs = intervalMinutes * 60 * 1000;
-        info(`等待 ${intervalMinutes} 分钟后发送下一批次...`);
-        await new Promise(resolve => setTimeout(resolve, intervalMs));
+      // 如果不是最后一轮，等待一个批次的间隔时间
+      if (loop < 2) {
+        info(`等待 ${dynamicIntervalSeconds} 秒后开始下一轮循环...`);
+        await new Promise(resolve => setTimeout(resolve, dynamicIntervalSeconds * 1000));
       }
     }
     
     // 检查所有批次是否都发送成功
     const allSuccess = results.every(result => result === true);
-    info(`所有批次发送完成，成功率: ${results.filter(r => r).length}/${totalBatches}`);
+    info(`所有批次发送完成，成功率: ${results.filter(r => r).length}/${results.length}`);
     
     return allSuccess;
   } catch (err) {
