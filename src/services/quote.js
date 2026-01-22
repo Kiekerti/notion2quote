@@ -45,8 +45,12 @@ function buildRequestData(tasks, batchNumber = 1, totalBatches = 1, totalTasks =
   const taskCount = tasks.length;
   const tasksText = formatTasksMessage(tasks, batchNumber, totalBatches, startIndex);
   
-  // 格式化时间为 "2026-01-22 17:09:41" 格式
-  const formattedTime = fetchTime.toISOString().replace('T', ' ').substring(0, 19);
+  // 转换为北京时间（UTC+8）并格式化为 "9:15:22" 格式
+  const beijingTime = new Date(fetchTime.getTime() + 8 * 60 * 60 * 1000);
+  const hours = beijingTime.getHours();
+  const minutes = beijingTime.getMinutes().toString().padStart(2, '0');
+  const seconds = beijingTime.getSeconds().toString().padStart(2, '0');
+  const formattedTime = `${hours}:${minutes}:${seconds}`;
   
   return {
     refreshNow: true,
