@@ -8,6 +8,10 @@ let currentSyncId = 0;
 let activeSyncId = null;
 let activeSyncTimeout = null;
 
+// 内存缓存，用于存储上次的任务哈希值
+let lastTaskHash = null;
+let lastSyncTime = null;
+
 /**
  * Quote 服务模块
  * 封装 Quote 设备 API 调用和消息发送逻辑
@@ -61,9 +65,9 @@ function buildRequestData(tasks, batchNumber = 1, totalBatches = 1, totalTasks =
   
   return {
     refreshNow: true,
-    title: `待办事项 (${batchNumber}/${totalBatches})`,
+    title: `${totalTasks} 个待办事项`,
     message: tasksText,
-    signature: `${totalTasks} 个 · ${formattedTime}`,
+    signature: `第 ${batchNumber} 页，共 ${totalBatches} 页 · ${formattedTime}`,
     icon: '',
     link: 'https://www.notion.so/kieker/2a8935d95ce580109f12e9ce4edf114a?v=2aa935d95ce580d99ee9000c1cee44c5',
     taskKey: ''
@@ -113,6 +117,26 @@ async function sendToQuoteDevice(tasks) {
     }
     return false;
   }
+}
+
+/**
+ * 生成任务列表的哈希值，用于检测变更
+ * @param {Array} tasks 任务列表
+ * @returns {string} 任务列表的哈希值
+ */
+function generateTaskHash(tasks) {
+  // 对任务列表进行排序，确保顺序一致
+  const sortedTasks = [...tasks].sort();
+  // 连接成一个字符串
+  const taskString = sortedTasks.join('|');
+  // 使用简单的哈希算法
+  let hash = 0;
+  for (let i = 0; i < taskString.length; i++) {
+    const char = taskString.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // 转换为32位整数
+  }
+  return hash.toString();
 }
 
 /**
@@ -166,11 +190,24 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2, for
       return true;
     }
     
+    // 生成任务哈希值，用于检测变更
+    const currentTaskHash = generateTaskHash(tasks);
+    
+    // 检查任务是否有变更
+    if (!forceSync && lastTaskHash === currentTaskHash) {
+      info('任务列表没有变更，跳过同步操作');
+      return true;
+    }
+    
+    // 记录新的哈希值和同步时间
+    lastTaskHash = currentTaskHash;
+    lastSyncTime = fetchTime;
+    
     // 根据当前时间计算应该显示的批次
-    // 使用分钟数作为种子，每15分钟切换一次批次
+    // 使用分钟数作为种子，每3分钟切换一次批次
     const now = new Date();
     const minutesSinceMidnight = now.getHours() * 60 + now.getMinutes();
-    const batchInterval = 15; // 每15分钟切换一次批次
+    const batchInterval = 3; // 每3分钟切换一次批次
     const currentBatch = ((minutesSinceMidnight / batchInterval) % totalBatches) + 1;
     
     info(`当前时间计算的批次: ${Math.round(currentBatch)}/${totalBatches}`);
