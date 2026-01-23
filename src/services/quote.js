@@ -83,9 +83,10 @@ function buildRequestData(tasks, batchNumber = 1, totalBatches = 1, totalTasks =
 /**
  * 发送任务到 Quote 设备
  * @param {Array} tasks 任务列表
+ * @param {number} batchInterval 批次间隔时间（分钟）
  * @returns {Promise<boolean>} 是否发送成功
  */
-async function sendToQuoteDevice(tasks) {
+async function sendToQuoteDevice(tasks, batchInterval = 3) {
   const config = getConfig();
   // 计算总任务数和批次数
   const totalTasks = tasks.length;
@@ -95,7 +96,6 @@ async function sendToQuoteDevice(tasks) {
   // 计算当前批次
   const now = new Date();
   const minutesSinceMidnight = now.getHours() * 60 + now.getMinutes();
-  const batchInterval = 3; // 每3分钟切换一次批次
   // 确保当前批次在有效范围内：1 到 totalBatches
   const currentBatch = Math.floor((minutesSinceMidnight / batchInterval) % totalBatches) + 1;
   
@@ -210,30 +210,36 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2, for
     
     info(`开始分批发送任务，共 ${totalTasks} 个任务，${totalBatches} 批，每批 ${batchSize} 个任务`);
     
-    // 如果任务数量为 0，直接返回成功
-    if (totalTasks === 0) {
-      info('没有任务需要发送');
-      return true;
-    }
+    // 如果任务数量为 0，更新哈希值并返回成功
+  if (totalTasks === 0) {
+    info('没有任务需要发送');
+    // 更新哈希值，确保空任务列表也能被正确检测
+    lastTaskHash = generateTaskHash([]);
+    lastSyncTime = fetchTime;
+    return true;
+  }
     
     // 生成任务哈希值，用于检测变更
-    const currentTaskHash = generateTaskHash(tasks);
-    
-    // 检查任务是否有变更
-    if (!forceSync && lastTaskHash === currentTaskHash) {
-      info('任务列表没有变更，跳过同步操作');
-      return true;
-    }
+  const currentTaskHash = generateTaskHash(tasks);
+  
+  // 记录哈希值变化
+  info(`任务哈希值变化: 上次=${lastTaskHash}, 当前=${currentTaskHash}`);
+  
+  // 检查任务是否有变更
+  if (!forceSync && lastTaskHash === currentTaskHash) {
+    info('任务列表没有变更，跳过同步操作');
+    return true;
+  }
     
     // 记录新的哈希值和同步时间
     lastTaskHash = currentTaskHash;
     lastSyncTime = fetchTime;
     
     // 根据当前时间计算应该显示的批次
-    // 使用分钟数作为种子，每3分钟切换一次批次
+    // 使用分钟数作为种子，每 intervalMinutes 分钟切换一次批次
     const now = new Date();
     const minutesSinceMidnight = now.getHours() * 60 + now.getMinutes();
-    const batchInterval = 3; // 每3分钟切换一次批次
+    const batchInterval = intervalMinutes; // 使用传入的批次间隔时间
     const currentBatch = Math.floor((minutesSinceMidnight / batchInterval) % totalBatches) + 1;
     
     info(`当前时间计算的批次: ${currentBatch}/${totalBatches}`);
