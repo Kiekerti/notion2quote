@@ -2,9 +2,6 @@ const axios = require('axios');
 const { getConfig } = require('../config');
 const { info, error } = require('../utils/logger');
 
-// 内存缓存，用于存储上次的任务哈希值
-let lastTaskHash = null;
-
 /**
  * Quote 服务模块
  * 封装 Quote 设备 API 调用和消息发送逻辑
@@ -137,33 +134,6 @@ async function sendToQuoteDevice(tasks, batchInterval = 3) {
   }
 }
 
-/**
- * 生成任务列表的哈希值，用于检测变更
- * @param {Array} tasks 任务列表
- * @returns {string} 任务列表的哈希值
- */
-function generateTaskHash(tasks) {
-  // 对任务列表进行排序，确保顺序一致
-  const sortedTasks = [...tasks].sort();
-  // 连接成一个字符串
-  const taskString = sortedTasks.join('|');
-  // 使用简单的哈希算法
-  let hash = 0;
-  for (let i = 0; i < taskString.length; i++) {
-    const char = taskString.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // 转换为32位整数
-  }
-  return hash.toString();
-}
-
-/**
- * 分批发送任务到 Quote 设备
- * @param {Array} tasks 任务列表
- * @param {number} batchSize 每批任务数量
- * @param {number} intervalMinutes 批次间隔时间（分钟）
- * @returns {Promise<boolean>} 是否发送成功
- */
 async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2) {
   info('开始同步操作');
   
@@ -177,28 +147,11 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2) {
     
     info(`开始分批发送任务，共 ${totalTasks} 个任务，${totalBatches} 批，每批 ${batchSize} 个任务`);
     
-    // 如果任务数量为 0，更新哈希值并返回成功
+    // 如果任务数量为 0，返回成功
     if (totalTasks === 0) {
       info('没有任务需要发送');
-      // 更新哈希值，确保空任务列表也能被正确检测
-      lastTaskHash = generateTaskHash([]);
       return true;
     }
-    
-    // 生成任务哈希值，用于检测变更
-    const currentTaskHash = generateTaskHash(tasks);
-    
-    // 记录哈希值变化
-    info(`任务哈希值变化: 上次=${lastTaskHash}, 当前=${currentTaskHash}`);
-    
-    // 检查任务是否有变更
-    if (lastTaskHash === currentTaskHash) {
-      info('任务列表没有变更，跳过同步操作');
-      return true;
-    }
-    
-    // 记录新的哈希值
-    lastTaskHash = currentTaskHash;
     
     // 根据当前时间计算应该显示的批次
     // 使用分钟数作为种子，每 intervalMinutes 分钟切换一次批次
