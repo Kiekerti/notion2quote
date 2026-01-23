@@ -109,7 +109,7 @@ class ExternalApiError extends AppError {
  * @param {Object} res Express response object
  * @param {Function} next Express next function
  */
-function errorHandler(err, req, res, next) {
+function errorHandler(err, req, res) {
   let error = { ...err };
   error.message = err.message;
   

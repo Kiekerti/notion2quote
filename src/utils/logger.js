@@ -3,8 +3,6 @@
  * Provides standardized logging with different levels and formats
  */
 
-const { getConfig } = require('../config');
-
 /**
  * Log levels
  */
@@ -37,8 +35,7 @@ class Logger {
    */
   constructor(name = 'app') {
     this.name = name;
-    this.config = getConfig();
-    this.logLevel = this.config.app.logLevel || LOG_LEVELS.INFO;
+    this.logLevel = LOG_LEVELS.INFO;
   }
 
   /**

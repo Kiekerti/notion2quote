@@ -1,6 +1,5 @@
 const { checkEnvVariables } = require('./config');
-const { getNotionTasks } = require('./services/notion');
-const { sendToQuoteDevice } = require('./services/quote');
+const { executeSync } = require('./services/syncService');
 const { info, error } = require('./utils/logger');
 
 /**
@@ -17,14 +16,8 @@ async function main() {
   }
   
   try {
-    // 1. 获取 Notion 进行中项目
-    info('正在从 Notion 获取进行中项目...');
-    const tasks = await getNotionTasks();
-    info(`获取到 ${tasks.length} 个进行中项目`, { tasks });
-    
-    // 2. 发送到 Quote 设备
-    info('正在发送到 Quote 设备...');
-    const success = await sendToQuoteDevice(tasks);
+    // 执行同步操作
+    const success = await executeSync();
     
     if (success) {
       info('成功发送到 Quote 设备！');

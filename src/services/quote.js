@@ -4,7 +4,6 @@ const { info, error } = require('../utils/logger');
 
 // 内存缓存，用于存储上次的任务哈希值
 let lastTaskHash = null;
-let lastSyncTime = null;
 
 /**
  * Quote 服务模块
@@ -47,7 +46,6 @@ function formatTasksMessage(tasks, batchNumber = 1, totalBatches = 1, startIndex
  * @returns {Object} 请求数据对象
  */
 function buildRequestData(tasks, batchNumber = 1, totalBatches = 1, totalTasks = 0, fetchTime = new Date(), startIndex = 0) {
-  const taskCount = tasks.length;
   const tasksText = formatTasksMessage(tasks, batchNumber, totalBatches, startIndex);
   
   // 转换为北京时间（UTC+8）并格式化为 "21:15:27" 格式
@@ -184,7 +182,6 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2) {
       info('没有任务需要发送');
       // 更新哈希值，确保空任务列表也能被正确检测
       lastTaskHash = generateTaskHash([]);
-      lastSyncTime = fetchTime;
       return true;
     }
     
@@ -200,9 +197,8 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2) {
       return true;
     }
     
-    // 记录新的哈希值和同步时间
+    // 记录新的哈希值
     lastTaskHash = currentTaskHash;
-    lastSyncTime = fetchTime;
     
     // 根据当前时间计算应该显示的批次
     // 使用分钟数作为种子，每 intervalMinutes 分钟切换一次批次
@@ -275,31 +271,6 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2) {
     error('分批发送任务时出错', { error: err.message });
     return false;
   }
-}
-
-/**
- * 获取当前应该发送的批次
- * @param {number} totalBatches 总批次数
- * @returns {number} 当前批次编号
- */
-function getCurrentBatch(totalBatches) {
-  // 使用日期作为种子，确保每天的批次顺序一致
-  const today = new Date().toISOString().split('T')[0];
-  const seed = parseInt(today.replace(/-/g, ''), 10);
-  
-  // 计算当前批次
-  const currentBatch = (seed % totalBatches) + 1;
-  return currentBatch;
-}
-
-/**
- * 更新批次计数器
- * 这里使用简单的内存存储，实际生产环境中可能需要使用持久化存储
- */
-function updateBatchCounter(currentBatch, totalBatches) {
-  // 这里可以实现持久化存储逻辑，例如使用 Redis 或文件存储
-  // 目前使用内存存储，服务重启后会重置
-  global.batchCounter = currentBatch;
 }
 
 module.exports = {
