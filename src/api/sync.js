@@ -24,10 +24,9 @@ module.exports = catchAsync(async (req, res) => {
     });
   }
   
-  // 添加同步任务到队列（手动触发，不使用强制同步）
+  // 添加同步任务到队列（手动触发）
   const taskAdded = await addSyncTask({
     type: 'sync',
-    forceSync: false,
     callback: (success) => {
       if (success) {
         const successMessage = '成功发送到 Quote 设备！';

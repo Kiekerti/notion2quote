@@ -20,32 +20,6 @@ const MAX_CALLS_PER_MINUTE = 60; // 每分钟最多 60 次调用
 const syncQueue = [];
 let isProcessingQueue = false;
 
-// 事件去重缓存
-const processedEvents = new Set();
-const MAX_CACHE_SIZE = 1000;
-
-/**
- * 检查事件是否已处理
- * @param {string} eventId 事件 ID
- * @returns {boolean} 是否已处理
- */
-function isEventProcessed(eventId) {
-  return processedEvents.has(eventId);
-}
-
-/**
- * 添加事件到已处理集合
- * @param {string} eventId 事件 ID
- */
-function addProcessedEvent(eventId) {
-  if (processedEvents.size >= MAX_CACHE_SIZE) {
-    // 当缓存达到上限时，清除一半的缓存
-    const oldestEvents = Array.from(processedEvents).slice(0, MAX_CACHE_SIZE / 2);
-    oldestEvents.forEach(id => processedEvents.delete(id));
-  }
-  processedEvents.add(eventId);
-}
-
 /**
  * 检查是否超过 API 调用频率限制
  * @returns {boolean} 是否超过限制
@@ -81,19 +55,10 @@ async function processSyncQueue() {
 
   try {
     while (syncQueue.length > 0) {
-      // 优先处理强制同步任务
-      const forceSyncTask = syncQueue.find(task => task.forceSync);
-      const task = forceSyncTask || syncQueue.shift();
+      // 取出队列中的第一个任务
+      const task = syncQueue.shift();
 
-      // 如果找到了强制同步任务，从队列中移除它
-      if (forceSyncTask) {
-        const index = syncQueue.indexOf(forceSyncTask);
-        if (index > -1) {
-          syncQueue.splice(index, 1);
-        }
-      }
-
-      info(`处理同步任务: ${task.type}, 强制同步: ${task.forceSync}`);
+      info(`处理同步任务: ${task.type}`);
 
       try {
         // 检查 API 调用频率限制
@@ -115,17 +80,12 @@ async function processSyncQueue() {
 
         // 2. 分批发送到 Quote 设备
         info('正在分批发送到 Quote 设备...');
-        const success = await sendTasksInBatches(tasks, 3, 2, task.forceSync);
+        const success = await sendTasksInBatches(tasks, 3, 2);
 
         if (success) {
           info('同步操作成功完成');
         } else {
           error('同步操作失败');
-        }
-
-        // 3. 添加事件到已处理集合（如果有事件 ID）
-        if (task.eventId) {
-          addProcessedEvent(task.eventId);
         }
 
         // 通知任务完成（如果有回调）
@@ -151,29 +111,16 @@ async function processSyncQueue() {
 /**
  * 添加同步任务到队列
  * @param {Object} options 任务选项
- * @param {string} options.type 任务类型（webhook 或 sync）
- * @param {boolean} options.forceSync 是否强制同步
- * @param {string} [options.eventId] 事件 ID（用于去重）
+ * @param {string} options.type 任务类型（sync）
  * @param {Function} [options.callback] 任务完成回调
  * @returns {Promise<boolean>} 是否添加成功
  */
 async function addSyncTask(options) {
-  const { type, forceSync = false, eventId, callback } = options;
-
-  // 检查事件是否已处理（仅对 webhook 事件）
-  if (eventId && isEventProcessed(eventId)) {
-    info(`事件 ${eventId} 已处理，跳过重复处理`);
-    if (callback) {
-      callback(true);
-    }
-    return false;
-  }
+  const { type, callback } = options;
 
   // 添加任务到队列
   syncQueue.push({
     type,
-    forceSync,
-    eventId,
     callback,
     timestamp: Date.now()
   });
@@ -188,10 +135,9 @@ async function addSyncTask(options) {
 
 /**
  * 执行同步操作（直接执行，不通过队列）
- * @param {boolean} forceSync 是否强制同步
  * @returns {Promise<boolean>} 是否执行成功
  */
-async function executeSync(forceSync = false) {
+async function executeSync() {
   // 检查 API 调用频率限制
   if (isOverRateLimit()) {
     error('API 调用频率超过限制');
@@ -209,7 +155,7 @@ async function executeSync(forceSync = false) {
 
     // 2. 分批发送到 Quote 设备
     info('正在分批发送到 Quote 设备...');
-    const success = await sendTasksInBatches(tasks, 3, 2, forceSync);
+    const success = await sendTasksInBatches(tasks, 3, 2);
 
     return success;
   } catch (err) {
@@ -235,7 +181,5 @@ module.exports = {
   executeSync,
   getQueueStatus,
   isOverRateLimit,
-  recordApiCall,
-  isEventProcessed,
-  addProcessedEvent
+  recordApiCall
 };

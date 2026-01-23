@@ -2,12 +2,6 @@ const axios = require('axios');
 const { getConfig } = require('../config');
 const { info, error } = require('../utils/logger');
 
-// 同步锁，确保同一时间只有一个同步操作在执行
-let syncLock = false;
-let currentSyncId = 0;
-let activeSyncId = null;
-let activeSyncTimeout = null;
-
 // 内存缓存，用于存储上次的任务哈希值
 let lastTaskHash = null;
 let lastSyncTime = null;
@@ -170,35 +164,10 @@ function generateTaskHash(tasks) {
  * @param {Array} tasks 任务列表
  * @param {number} batchSize 每批任务数量
  * @param {number} intervalMinutes 批次间隔时间（分钟）
- * @param {boolean} forceSync 是否强制同步（Webhook 触发时使用）
  * @returns {Promise<boolean>} 是否发送成功
  */
-async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2, forceSync = false) {
-  // 生成新的同步 ID
-  const syncId = ++currentSyncId;
-  info(`开始同步操作，ID: ${syncId}, 强制同步: ${forceSync}`);
-  
-  // 检查是否有同步操作正在执行
-  if (syncLock && !forceSync) {
-    info('有同步操作正在执行，跳过本次操作');
-    return true;
-  }
-  
-  // 如果是强制同步且有操作正在执行，先释放锁
-  if (forceSync && syncLock) {
-    info('强制同步，释放现有锁');
-    syncLock = false;
-    // 取消之前的同步操作
-    if (activeSyncTimeout) {
-      clearTimeout(activeSyncTimeout);
-      info('已取消之前的同步操作');
-    }
-  }
-  
-  // 获取锁
-  syncLock = true;
-  // 设置当前活动的同步 ID
-  activeSyncId = syncId;
+async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2) {
+  info('开始同步操作');
   
   try {
     const config = getConfig();
@@ -211,25 +180,25 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2, for
     info(`开始分批发送任务，共 ${totalTasks} 个任务，${totalBatches} 批，每批 ${batchSize} 个任务`);
     
     // 如果任务数量为 0，更新哈希值并返回成功
-  if (totalTasks === 0) {
-    info('没有任务需要发送');
-    // 更新哈希值，确保空任务列表也能被正确检测
-    lastTaskHash = generateTaskHash([]);
-    lastSyncTime = fetchTime;
-    return true;
-  }
+    if (totalTasks === 0) {
+      info('没有任务需要发送');
+      // 更新哈希值，确保空任务列表也能被正确检测
+      lastTaskHash = generateTaskHash([]);
+      lastSyncTime = fetchTime;
+      return true;
+    }
     
     // 生成任务哈希值，用于检测变更
-  const currentTaskHash = generateTaskHash(tasks);
-  
-  // 记录哈希值变化
-  info(`任务哈希值变化: 上次=${lastTaskHash}, 当前=${currentTaskHash}`);
-  
-  // 检查任务是否有变更
-  if (!forceSync && lastTaskHash === currentTaskHash) {
-    info('任务列表没有变更，跳过同步操作');
-    return true;
-  }
+    const currentTaskHash = generateTaskHash(tasks);
+    
+    // 记录哈希值变化
+    info(`任务哈希值变化: 上次=${lastTaskHash}, 当前=${currentTaskHash}`);
+    
+    // 检查任务是否有变更
+    if (lastTaskHash === currentTaskHash) {
+      info('任务列表没有变更，跳过同步操作');
+      return true;
+    }
     
     // 记录新的哈希值和同步时间
     lastTaskHash = currentTaskHash;
@@ -305,15 +274,6 @@ async function sendTasksInBatches(tasks, batchSize = 3, intervalMinutes = 2, for
   } catch (err) {
     error('分批发送任务时出错', { error: err.message });
     return false;
-  } finally {
-    // 释放锁
-    syncLock = false;
-    // 清理超时定时器
-    if (activeSyncTimeout) {
-      clearTimeout(activeSyncTimeout);
-      activeSyncTimeout = null;
-    }
-    info('同步锁已释放');
   }
 }
 
