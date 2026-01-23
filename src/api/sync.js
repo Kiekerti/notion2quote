@@ -32,25 +32,11 @@ module.exports = catchAsync(async (req, res) => {
       if (success) {
         const successMessage = '成功发送到 Quote 设备！';
         info(successMessage);
-        logResponse(res, 200, { 
-          success: true, 
-          message: successMessage
-        });
-        return res.status(200).json({ 
-          success: true, 
-          message: successMessage
-        });
+        // 只记录日志，不返回响应，因为已经返回了 202
       } else {
         const errorMessage = '发送到 Quote 设备失败';
         error(errorMessage);
-        logResponse(res, 500, { 
-          success: false, 
-          message: errorMessage
-        });
-        return res.status(500).json({ 
-          success: false, 
-          message: errorMessage
-        });
+        // 只记录日志，不返回响应，因为已经返回了 202
       }
     }
   });

@@ -85,7 +85,9 @@ async function getNotionTasks() {
           property: '创建日期',
           direction: 'descending'
         }
-      ]
+      ],
+      // 添加超时设置
+      timeout: config.app.timeout
     });
 
     // 验证响应格式
@@ -132,6 +134,10 @@ async function getNotionTasks() {
     error('从 Notion 获取任务时出错', { error: err.message });
     if (err.response) {
       error('Notion API 错误响应', { status: err.response.status });
+    } else if (err.code === 'notionhq_client_request_timeout') {
+      error('Notion API 请求超时，使用缓存的任务列表');
+      // 返回一个默认的错误消息任务，避免设备显示空白
+      return ['Notion API 请求超时，请稍后重试'];
     }
     return [];
   }
